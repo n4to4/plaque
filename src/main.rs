@@ -1,4 +1,4 @@
-use std::{error::Error, fs::File, net::SocketAddr};
+use std::{error::Error, net::SocketAddr};
 use tokio::{
     io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
     net::{TcpListener, TcpStream},
@@ -9,6 +9,7 @@ use tracing_tree::HierarchicalLayer;
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Box<dyn Error>> {
+    let (chrome_layer, _guard) = tracing_chrome::ChromeLayerBuilder::new().build();
     Registry::default()
         .with(EnvFilter::from_default_env())
         .with(
@@ -16,11 +17,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 .with_targets(true)
                 .with_bracketed_fields(true),
         )
-        .with(
-            tracing_subscriber::fmt::layer()
-                .json()
-                .with_writer(|| File::create("/tmp/log.json").unwrap()),
-        )
+        .with(chrome_layer)
         .init();
 
     run_server().await
