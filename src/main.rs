@@ -13,6 +13,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
         opentelemetry_jaeger::new_pipeline().install_batch(opentelemetry::runtime::Tokio)?;
     let telemetry = tracing_opentelemetry::layer().with_tracer(tracer);
 
+    let (console, server) = console_subscriber::ConsoleLayer::builder().build();
+    tokio::spawn(async move {
+        server.serve().await.unwrap();
+    });
+
     Registry::default()
         .with(EnvFilter::from_default_env())
         .with(
@@ -21,6 +26,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 .with_bracketed_fields(true),
         )
         .with(telemetry)
+        .with(console)
         .init();
 
     run_server().await?;
