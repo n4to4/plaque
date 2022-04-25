@@ -3,15 +3,18 @@ use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpListener,
 };
+use tracing::{debug, info};
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Box<dyn Error>> {
+    tracing_subscriber::fmt::init();
+
     let addr: SocketAddr = "0.0.0.0:3779".parse()?;
-    println!("Listening on http://{}", addr);
+    info!("Listening on http://{}", addr);
     let listener = TcpListener::bind(addr).await?;
     loop {
         let (mut stream, addr) = listener.accept().await?;
-        println!("Accepted connection from {addr}");
+        info!(%addr, "Accepted connection");
 
         let mut incoming = vec![];
 
@@ -26,10 +29,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
 
         let incoming = std::str::from_utf8(&incoming)?;
-        println!("Got HTTP request:\n{}", incoming);
+        debug!(%incoming, "Got HTTP request");
         stream.write_all(b"HTTP/1.1 200 OK\r\n").await?;
         stream.write_all(b"\r\n").await?;
         stream.write_all(b"Hello from plaque!\r\n").await?;
-        println!("Closing connection for {addr}");
+        info!(%addr, "Closing connection");
     }
 }
