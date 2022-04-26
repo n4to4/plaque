@@ -3,7 +3,7 @@ use tokio::{
     io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
     net::{TcpListener, TcpStream},
 };
-use tracing::{debug, info, info_span, Instrument};
+use tracing::{debug, error, info, info_span, Instrument};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Registry};
 use tracing_tree::HierarchicalLayer;
 
@@ -43,7 +43,11 @@ async fn run_server() -> Result<(), Box<dyn Error>> {
     let listener = TcpListener::bind(addr).await?;
     loop {
         let (stream, addr) = listener.accept().instrument(info_span!("accept")).await?;
-        handle_connection(stream, addr).await?;
+        tokio::spawn(async move {
+            if let Err(err) = handle_connection(stream, addr).await {
+                error!(%err, "Error handling connection");
+            }
+        });
     }
 }
 
