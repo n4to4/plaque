@@ -1,4 +1,5 @@
 use std::error::Error;
+use tracing_error::ErrorLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Registry};
 use tracing_tree::HierarchicalLayer;
 
@@ -14,6 +15,7 @@ pub(crate) fn setup() -> Result<(), Box<dyn Error>> {
                 .with_targets(true)
                 .with_bracketed_fields(true),
         )
+        .with(ErrorLayer::default())
         .with(telemetry)
         .init();
 

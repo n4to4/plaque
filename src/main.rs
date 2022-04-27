@@ -5,9 +5,12 @@ use tower_http::trace::TraceLayer;
 use tracing::info;
 
 mod tracing_stuff;
+mod youtube;
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Box<dyn Error>> {
+    color_eyre::install()?;
+
     tracing_stuff::setup()?;
     run_server().await?;
     tracing_stuff::teardown();
@@ -30,5 +33,5 @@ async fn run_server() -> Result<(), Box<dyn Error>> {
 
 #[tracing::instrument]
 async fn root() -> impl IntoResponse {
-    "Hello from plaque!\n"
+    youtube::fetch_video_id().await.unwrap()
 }
