@@ -6,9 +6,10 @@ use axum::{
 };
 use color_eyre::Report;
 use serde::Serialize;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Instant;
 use std::{error::Error, net::SocketAddr};
+use tokio::sync::Mutex;
 use tower_http::trace::TraceLayer;
 use tracing::{debug, info};
 
@@ -49,8 +50,10 @@ async fn root(
         video_id: String,
     }
 
+    let mut cached_value = cached.value.lock().await;
+
     {
-        if let Some((cached_at, video_id)) = cached.value.lock().unwrap().as_ref() {
+        if let Some((cached_at, video_id)) = cached_value.as_ref() {
             if cached_at.elapsed() < std::time::Duration::from_secs(5) {
                 return Ok(Json(Response {
                     video_id: video_id.clone(),
@@ -65,11 +68,7 @@ async fn root(
     }
 
     let video_id = youtube::fetch_video_id(&client).await?;
-    cached
-        .value
-        .lock()
-        .unwrap()
-        .replace((Instant::now(), video_id.clone()));
+    cached_value.replace((Instant::now(), video_id.clone()));
 
     Ok(Json(Response { video_id }))
 }
