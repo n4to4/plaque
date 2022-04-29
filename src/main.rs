@@ -1,4 +1,10 @@
-use axum::{http::StatusCode, response::IntoResponse, routing::get, Router, Server};
+use axum::{
+    http::StatusCode,
+    response::{IntoResponse, Response},
+    routing::get,
+    Router, Server,
+};
+use color_eyre::Report;
 use std::{error::Error, net::SocketAddr};
 use tower::ServiceBuilder;
 use tower_http::trace::TraceLayer;
@@ -32,12 +38,25 @@ async fn run_server() -> Result<(), Box<dyn Error>> {
 }
 
 #[tracing::instrument]
-async fn root() -> Result<impl IntoResponse, (StatusCode, String)> {
-    let res = youtube::fetch_video_id().await.map_err(|err| {
+async fn root() -> Result<impl IntoResponse, ReportError> {
+    let res = youtube::fetch_video_id().await?;
+    Ok(res)
+}
+
+pub struct ReportError(Report);
+
+impl From<Report> for ReportError {
+    fn from(err: Report) -> Self {
+        ReportError(err)
+    }
+}
+
+impl IntoResponse for ReportError {
+    fn into_response(self) -> Response {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
-            format!("youtube error: {err}"),
+            format!("youtube error: {:?}", self.0),
         )
-    })?;
-    Ok(res)
+            .into_response()
+    }
 }
