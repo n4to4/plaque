@@ -794,6 +794,7 @@ dependencies = [
  "reqwest",
  "serde",
  "tap",
+ "thiserror",
  "tokio",
  "tower",
  "tower-http 0.3.0",

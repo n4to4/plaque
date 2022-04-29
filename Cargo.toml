@@ -15,6 +15,7 @@ opentelemetry-jaeger = { version = "0.16.0", features = ["rt-tokio"] }
 reqwest = { version = "0.11.10", default-features = false, features = ["rustls-tls"] }
 serde = { version = "1.0.136", features = ["derive"] }
 tap = "1.0.1"
+thiserror = "1.0.30"
 tokio = { version = "1.17.0", features = ["full", "tracing"] }
 tower = "0.4.12"
 tower-http = { version = "0.3.0", features = ["trace"] }

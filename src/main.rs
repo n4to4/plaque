@@ -4,12 +4,12 @@ use axum::{
     routing::get,
     Extension, Json, Router, Server,
 };
-use color_eyre::Report;
+use color_eyre::{eyre::eyre, Report};
 use serde::Serialize;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use std::{error::Error, net::SocketAddr};
-use tokio::sync::Mutex;
+use tokio::sync::broadcast;
 use tower_http::trace::TraceLayer;
 use tracing::{debug, info};
 
@@ -50,35 +50,95 @@ async fn root(
         video_id: String,
     }
 
-    let mut cached_value = cached.value.lock().await;
+    let mut inner = cached.inner.lock().unwrap();
 
-    {
-        if let Some((cached_at, video_id)) = cached_value.as_ref() {
-            if cached_at.elapsed() < std::time::Duration::from_secs(5) {
-                return Ok(Json(Response {
-                    video_id: video_id.clone(),
-                }));
-            } else {
-                // was stale, let's refresh
-                debug!("stale video, let's refresh");
-            }
+    if let Some((cached_at, video_id)) = inner.last_fetched.as_ref() {
+        if cached_at.elapsed() < std::time::Duration::from_secs(5) {
+            return Ok(Json(Response {
+                video_id: video_id.clone(),
+            }));
         } else {
-            debug!("not cached, let's fetch");
+            // was stale, let's refresh
+            debug!("stale video, let's refresh");
         }
     }
 
-    let video_id = youtube::fetch_video_id(&client).await?;
-    cached_value.replace((Instant::now(), video_id.clone()));
+    if let Some(inflight) = inner.inflight.as_ref() {
+        let mut rx = inflight.subscribe();
+        let video_id = rx
+            .recv()
+            .await
+            .map_err(|_| eyre!("in-flight request died"))??;
+        debug!("received deduplicated fetch");
+        return Ok(Json(Response { video_id }));
+    }
+
+    let (tx, mut rx) = broadcast::channel::<Result<String, CachedError>>(1);
+    tokio::spawn(async move {
+        let video_id = youtube::fetch_video_id(&client).await;
+        match video_id {
+            Ok(video_id) => {
+                inner
+                    .last_fetched
+                    .replace((Instant::now(), video_id.clone()));
+                tx.send(Ok(video_id))
+            }
+            Err(e) => tx.send(Err(e.into())),
+        };
+    });
+    let video_id = rx
+        .recv()
+        .await
+        .map_err(|_| eyre!("in-flight request died"))??;
+    debug!("received deduplicated fetch");
 
     Ok(Json(Response { video_id }))
 }
 
 #[derive(Clone, Default)]
 struct CachedLatestVideo {
-    value: Arc<Mutex<Option<(Instant, String)>>>,
+    inner: Arc<Mutex<CachedLastVideoInner>>,
+}
+
+#[derive(Default)]
+struct CachedLastVideoInner {
+    last_fetched: Option<(Instant, String)>,
+    inflight: Option<broadcast::Sender<Result<String, CachedError>>>,
+}
+
+#[derive(Debug, Clone, thiserror::Error)]
+#[error("stringified error: {inner}")]
+pub struct CachedError {
+    inner: String,
 }
 
 pub struct ReportError(Report);
+
+impl CachedError {
+    pub fn new<E: std::fmt::Display>(e: E) -> Self {
+        Self {
+            inner: e.to_string(),
+        }
+    }
+}
+
+impl From<Report> for CachedError {
+    fn from(e: Report) -> Self {
+        CachedError::new(e)
+    }
+}
+
+impl From<broadcast::error::RecvError> for CachedError {
+    fn from(e: broadcast::error::RecvError) -> Self {
+        CachedError::new(e)
+    }
+}
+
+impl From<CachedError> for ReportError {
+    fn from(err: CachedError) -> Self {
+        ReportError(err.into())
+    }
+}
 
 impl From<Report> for ReportError {
     fn from(err: Report) -> Self {
