@@ -6,9 +6,11 @@ use axum::{
 };
 use color_eyre::Report;
 use serde::Serialize;
+use std::sync::{Arc, Mutex};
+use std::time::Instant;
 use std::{error::Error, net::SocketAddr};
 use tower_http::trace::TraceLayer;
-use tracing::info;
+use tracing::{debug, info};
 
 mod tracing_stuff;
 mod youtube;
@@ -30,22 +32,51 @@ async fn run_server() -> Result<(), Box<dyn Error>> {
     let app = Router::new()
         .route("/", get(root))
         .layer(TraceLayer::new_for_http())
-        .layer(Extension(reqwest::Client::new()));
+        .layer(Extension(reqwest::Client::new()))
+        .layer(Extension(CachedLatestVideo::default()));
     Server::bind(&addr).serve(app.into_make_service()).await?;
 
     Ok(())
 }
 
-#[tracing::instrument]
-async fn root(client: Extension<reqwest::Client>) -> Result<impl IntoResponse, ReportError> {
+#[tracing::instrument(skip(client, cached))]
+async fn root(
+    client: Extension<reqwest::Client>,
+    cached: Extension<CachedLatestVideo>,
+) -> Result<impl IntoResponse, ReportError> {
     #[derive(Serialize)]
     struct Response {
         video_id: String,
     }
 
-    Ok(Json(Response {
-        video_id: youtube::fetch_video_id(&client).await?,
-    }))
+    {
+        if let Some((cached_at, video_id)) = cached.value.lock().unwrap().as_ref() {
+            if cached_at.elapsed() < std::time::Duration::from_secs(5) {
+                return Ok(Json(Response {
+                    video_id: video_id.clone(),
+                }));
+            } else {
+                // was stale, let's refresh
+                debug!("stale video, let's refresh");
+            }
+        } else {
+            debug!("not cached, let's fetch");
+        }
+    }
+
+    let video_id = youtube::fetch_video_id(&client).await?;
+    cached
+        .value
+        .lock()
+        .unwrap()
+        .replace((Instant::now(), video_id.clone()));
+
+    Ok(Json(Response { video_id }))
+}
+
+#[derive(Clone, Default)]
+struct CachedLatestVideo {
+    value: Arc<Mutex<Option<(Instant, String)>>>,
 }
 
 pub struct ReportError(Report);
