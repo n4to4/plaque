@@ -1,13 +1,12 @@
 use color_eyre::{eyre::eyre, Report};
-use reqwest::Client;
 use tap::Pipe;
 use url::Url;
 
 const YT_CHANNEL_ID: &str = "UCs4fQRyl1TJvoeOdekW6lYA";
 
 #[tracing::instrument]
-pub(crate) async fn fetch_video_id() -> Result<String, Report> {
-    Ok(Client::new()
+pub(crate) async fn fetch_video_id(client: &reqwest::Client) -> Result<String, Report> {
+    Ok(client
         .get({
             let mut url = Url::parse("https://www.youtube.com/feeds/videos.xml")?;
             url.query_pairs_mut()

@@ -2,7 +2,7 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
     routing::get,
-    Json, Router, Server,
+    Extension, Json, Router, Server,
 };
 use color_eyre::Report;
 use serde::Serialize;
@@ -29,21 +29,22 @@ async fn run_server() -> Result<(), Box<dyn Error>> {
 
     let app = Router::new()
         .route("/", get(root))
-        .layer(TraceLayer::new_for_http());
+        .layer(TraceLayer::new_for_http())
+        .layer(Extension(reqwest::Client::new()));
     Server::bind(&addr).serve(app.into_make_service()).await?;
 
     Ok(())
 }
 
 #[tracing::instrument]
-async fn root() -> Result<impl IntoResponse, ReportError> {
+async fn root(client: Extension<reqwest::Client>) -> Result<impl IntoResponse, ReportError> {
     #[derive(Serialize)]
     struct Response {
         video_id: String,
     }
 
     Ok(Json(Response {
-        video_id: youtube::fetch_video_id().await?,
+        video_id: youtube::fetch_video_id(&client).await?,
     }))
 }
 
