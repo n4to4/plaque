@@ -50,49 +50,59 @@ async fn root(
         video_id: String,
     }
 
-    let mut inner = cached.inner.lock().unwrap();
-
-    if let Some((cached_at, video_id)) = inner.last_fetched.as_ref() {
-        if cached_at.elapsed() < std::time::Duration::from_secs(5) {
-            return Ok(Json(Response {
-                video_id: video_id.clone(),
-            }));
-        } else {
-            // was stale, let's refresh
-            debug!("stale video, let's refresh");
+    let mut rx = {
+        let mut inner = cached.inner.lock().unwrap();
+        if let Some((cached_at, video_id)) = inner.last_fetched.as_ref() {
+            if cached_at.elapsed() < std::time::Duration::from_secs(5) {
+                return Ok(Json(Response {
+                    video_id: video_id.clone(),
+                }));
+            } else {
+                // was stale, let's refresh
+                debug!("stale video, let's refresh");
+            }
         }
-    }
 
-    if let Some(inflight) = inner.inflight.as_ref() {
-        let mut rx = inflight.subscribe();
-        let video_id = rx
+        // is there an in-flight request?
+        if let Some(inflight) = inner.inflight.as_ref() {
+            inflight.subscribe()
+        } else {
+            // there isn't, let's fetch
+            let (tx, rx) = broadcast::channel::<Result<String, CachedError>>(1);
+            inner.inflight = Some(tx.clone());
+            let cached = cached.clone();
+            tokio::spawn(async move {
+                let video_id = youtube::fetch_video_id(&client).await;
+                {
+                    // only sync code in this block
+                    let mut inner = cached.inner.lock().unwrap();
+                    inner.inflight = None;
+
+                    match video_id {
+                        Ok(video_id) => {
+                            inner
+                                .last_fetched
+                                .replace((Instant::now(), video_id.clone()));
+                            let _ = tx.send(Ok(video_id));
+                        }
+                        Err(e) => {
+                            let _ = tx.send(Err(e.into()));
+                        }
+                    };
+                }
+            });
+            rx
+        }
+    };
+
+    // if we reached here, we're waiting for an in-flight request ( we weren't
+    // able to serve from cache
+    Ok(Json(Response {
+        video_id: rx
             .recv()
             .await
-            .map_err(|_| eyre!("in-flight request died"))??;
-        debug!("received deduplicated fetch");
-        return Ok(Json(Response { video_id }));
-    }
-
-    let (tx, mut rx) = broadcast::channel::<Result<String, CachedError>>(1);
-    tokio::spawn(async move {
-        let video_id = youtube::fetch_video_id(&client).await;
-        match video_id {
-            Ok(video_id) => {
-                inner
-                    .last_fetched
-                    .replace((Instant::now(), video_id.clone()));
-                tx.send(Ok(video_id))
-            }
-            Err(e) => tx.send(Err(e.into())),
-        };
-    });
-    let video_id = rx
-        .recv()
-        .await
-        .map_err(|_| eyre!("in-flight request died"))??;
-    debug!("received deduplicated fetch");
-
-    Ok(Json(Response { video_id }))
+            .map_err(|_| eyre!("in-flight request died"))??,
+    }))
 }
 
 #[derive(Clone, Default)]
