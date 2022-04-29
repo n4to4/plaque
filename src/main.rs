@@ -2,9 +2,10 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
     routing::get,
-    Router, Server,
+    Json, Router, Server,
 };
 use color_eyre::Report;
+use serde::Serialize;
 use std::{error::Error, net::SocketAddr};
 use tower::ServiceBuilder;
 use tower_http::trace::TraceLayer;
@@ -39,8 +40,14 @@ async fn run_server() -> Result<(), Box<dyn Error>> {
 
 #[tracing::instrument]
 async fn root() -> Result<impl IntoResponse, ReportError> {
-    let res = youtube::fetch_video_id().await?;
-    Ok(res)
+    #[derive(Serialize)]
+    struct Response {
+        video_id: String,
+    }
+
+    Ok(Json(Response {
+        video_id: youtube::fetch_video_id().await?,
+    }))
 }
 
 pub struct ReportError(Report);
