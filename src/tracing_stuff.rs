@@ -4,9 +4,9 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilte
 use tracing_tree::HierarchicalLayer;
 
 pub(crate) fn setup() -> Result<(), Box<dyn Error>> {
-    let tracer =
-        opentelemetry_jaeger::new_pipeline().install_batch(opentelemetry::runtime::Tokio)?;
-    let telemetry = tracing_opentelemetry::layer().with_tracer(tracer);
+    //let tracer =
+    //    opentelemetry_jaeger::new_pipeline().install_batch(opentelemetry::runtime::Tokio)?;
+    //let telemetry = tracing_opentelemetry::layer().with_tracer(tracer);
 
     Registry::default()
         .with(EnvFilter::from_default_env())
@@ -16,7 +16,7 @@ pub(crate) fn setup() -> Result<(), Box<dyn Error>> {
                 .with_bracketed_fields(true),
         )
         .with(ErrorLayer::default())
-        .with(telemetry)
+        //.with(telemetry)
         .init();
 
     Ok(())
