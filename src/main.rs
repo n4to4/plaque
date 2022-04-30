@@ -1,3 +1,4 @@
+use crate::cached::{CachedError, ReportError};
 use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
@@ -13,6 +14,7 @@ use tokio::sync::broadcast;
 use tower_http::trace::TraceLayer;
 use tracing::{debug, info};
 
+mod cached;
 mod tracing_stuff;
 mod youtube;
 
@@ -103,45 +105,6 @@ async fn root(
             .await
             .map_err(|_| eyre!("in-flight request died"))??,
     }))
-}
-
-#[derive(Clone, Default)]
-struct CachedLatestVideo {
-    inner: Arc<Mutex<CachedLastVideoInner>>,
-}
-
-#[derive(Default)]
-struct CachedLastVideoInner {
-    last_fetched: Option<(Instant, String)>,
-    inflight: Option<broadcast::Sender<Result<String, CachedError>>>,
-}
-
-#[derive(Debug, Clone, thiserror::Error)]
-#[error("stringified error: {inner}")]
-pub struct CachedError {
-    inner: String,
-}
-
-pub struct ReportError(Report);
-
-impl CachedError {
-    pub fn new<E: std::fmt::Display>(e: E) -> Self {
-        Self {
-            inner: e.to_string(),
-        }
-    }
-}
-
-impl From<Report> for CachedError {
-    fn from(e: Report) -> Self {
-        CachedError::new(e)
-    }
-}
-
-impl From<broadcast::error::RecvError> for CachedError {
-    fn from(e: broadcast::error::RecvError) -> Self {
-        CachedError::new(e)
-    }
 }
 
 impl From<CachedError> for ReportError {
