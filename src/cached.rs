@@ -1,10 +1,18 @@
+use axum::{
+    http::StatusCode,
+    response::{IntoResponse, Response},
+};
 use color_eyre::{eyre::eyre, Report};
+use std::future::Future;
+use std::pin::Pin;
 use std::{
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
 use tokio::sync::broadcast;
 use tracing::debug;
+
+pub type BoxFut<'a, O> = Pin<Box<dyn Future<Output = O> + Send + 'a>>;
 
 #[derive(Debug, Clone, thiserror::Error)]
 #[error("stringified error: {inner}")]
@@ -31,6 +39,28 @@ impl From<Report> for CachedError {
 impl From<broadcast::error::RecvError> for CachedError {
     fn from(e: broadcast::error::RecvError) -> Self {
         CachedError::new(e)
+    }
+}
+
+impl From<CachedError> for ReportError {
+    fn from(err: CachedError) -> Self {
+        ReportError(err.into())
+    }
+}
+
+impl From<Report> for ReportError {
+    fn from(err: Report) -> Self {
+        ReportError(err)
+    }
+}
+
+impl IntoResponse for ReportError {
+    fn into_response(self) -> Response {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("youtube error: {:?}", self.0),
+        )
+            .into_response()
     }
 }
 
@@ -74,7 +104,11 @@ where
         }
     }
 
-    pub async fn get_cached(&self) -> Result<T, CachedError> {
+    pub async fn get_cached<F, E>(&self, f: F) -> Result<T, CachedError>
+    where
+        F: FnOnce() -> BoxFut<'static, Result<T, E>> + Send + 'static,
+        E: std::fmt::Display + 'static,
+    {
         let mut rx = {
             // only sync code in this block
             let mut inner = self.inner.lock().unwrap();
@@ -95,8 +129,11 @@ where
                 let (tx, rx) = broadcast::channel::<Result<T, CachedError>>(1);
                 inner.inflight = Some(tx.clone());
                 let inner = self.inner.clone();
+
+                let fut = f();
+
                 tokio::spawn(async move {
-                    let res = todo!("how do we actually perform a request?");
+                    let res = fut.await;
 
                     {
                         // only sync code in this block
@@ -104,12 +141,14 @@ where
                         inner.inflight = None;
 
                         match res {
-                            Ok(video_id) => {
+                            Ok(value) => {
                                 inner.last_fetched.replace((Instant::now(), value.clone()));
-                                let _ = tx.send(Ok(video_id));
+                                let _ = tx.send(Ok(value));
                             }
                             Err(e) => {
-                                let _ = tx.send(Err(e.into()));
+                                let _ = tx.send(Err(CachedError {
+                                    inner: e.to_string(),
+                                }));
                             }
                         };
                     }
