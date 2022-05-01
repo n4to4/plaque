@@ -114,7 +114,7 @@ where
             let mut inner = self.inner.lock().unwrap();
 
             if let Some((fetched_at, value)) = inner.last_fetched.as_ref() {
-                if fetched_at.elapsed() < std::time::Duration::from_secs(5) {
+                if fetched_at.elapsed() < self.refresh_interval {
                     return Ok(value.clone());
                 } else {
                     // was stale, let's refresh
@@ -159,9 +159,8 @@ where
 
         // if we reached here, we're waiting for an in-flight request (we weren't
         // able to serve from cache)
-        Ok(rx
-            .recv()
+        rx.recv()
             .await
-            .map_err(|_| eyre!("in-flight request died"))??)
+            .map_err(|_| eyre!("in-flight request died"))?
     }
 }
