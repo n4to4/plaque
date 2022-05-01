@@ -7,7 +7,7 @@ use parking_lot::Mutex;
 use std::future::Future;
 use std::pin::Pin;
 use std::{
-    sync::Arc,
+    sync::{Arc, Weak},
     time::{Duration, Instant},
 };
 use tokio::sync::broadcast;
@@ -83,7 +83,7 @@ where
     T: Clone + Send + Sync + 'static,
 {
     last_fetched: Option<(Instant, T)>,
-    inflight: Option<broadcast::Sender<Result<T, CachedError>>>,
+    inflight: Option<Weak<broadcast::Sender<Result<T, CachedError>>>>,
 }
 
 impl<T> Default for CachedLastVideoInner<T>
@@ -127,12 +127,15 @@ where
                 }
             }
 
-            if let Some(inflight) = inner.inflight.as_ref() {
+            if let Some(inflight) = inner.inflight.as_ref().and_then(Weak::upgrade) {
                 inflight.subscribe()
             } else {
                 // there isn't, let's fetch
                 let (tx, rx) = broadcast::channel::<Result<T, CachedError>>(1);
-                inner.inflight = Some(tx.clone());
+                // let's reference-count a single `Sender`:
+                let tx = Arc::new(tx);
+                // and only store a weak reference in our state:
+                inner.inflight = Some(Arc::downgrade(&tx));
                 let inner = self.inner.clone();
 
                 let fut = f();
