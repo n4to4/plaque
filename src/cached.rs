@@ -13,9 +13,8 @@ use std::{
 use tokio::sync::broadcast;
 use tracing::debug;
 
-use std::sync::atomic::{AtomicU64, Ordering};
-
-static DOOM_COUNTER: AtomicU64 = AtomicU64::new(0);
+//use std::sync::atomic::{AtomicU64, Ordering};
+//static DOOM_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 pub type BoxFut<'a, O> = Pin<Box<dyn Future<Output = O> + Send + 'a>>;
 
@@ -143,9 +142,9 @@ where
                 tokio::spawn(async move {
                     let res = fut.await;
 
-                    if DOOM_COUNTER.fetch_add(1, Ordering::SeqCst) == 0 {
-                        panic!("doom!");
-                    }
+                    //if DOOM_COUNTER.fetch_add(1, Ordering::SeqCst) == 0 {
+                    //    panic!("doom!");
+                    //}
 
                     {
                         // only sync code in this block
