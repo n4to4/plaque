@@ -113,13 +113,13 @@ where
         F: FnOnce() -> BoxFut<'static, Result<T, E>> + Send + 'static,
         E: std::fmt::Display + 'static,
     {
-        if DOOM_COUNTER.fetch_add(1, Ordering::SeqCst) == 2 {
-            panic!("doom!");
-        }
-
         let mut rx = {
             // only sync code in this block
             let mut inner = self.inner.lock().unwrap();
+
+            if DOOM_COUNTER.fetch_add(1, Ordering::SeqCst) == 2 {
+                panic!("doom!");
+            }
 
             if let Some((fetched_at, value)) = inner.last_fetched.as_ref() {
                 if fetched_at.elapsed() < self.refresh_interval {
