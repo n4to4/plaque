@@ -12,6 +12,10 @@ use std::{
 use tokio::sync::broadcast;
 use tracing::debug;
 
+use std::sync::atomic::{AtomicU64, Ordering};
+
+static DOOM_COUNTER: AtomicU64 = AtomicU64::new(0);
+
 pub type BoxFut<'a, O> = Pin<Box<dyn Future<Output = O> + Send + 'a>>;
 
 #[derive(Debug, Clone, thiserror::Error)]
@@ -109,6 +113,10 @@ where
         F: FnOnce() -> BoxFut<'static, Result<T, E>> + Send + 'static,
         E: std::fmt::Display + 'static,
     {
+        if DOOM_COUNTER.fetch_add(1, Ordering::SeqCst) == 2 {
+            panic!("doom!");
+        }
+
         let mut rx = {
             // only sync code in this block
             let mut inner = self.inner.lock().unwrap();
