@@ -118,10 +118,6 @@ where
             // only sync code in this block
             let mut inner = self.inner.lock();
 
-            if DOOM_COUNTER.fetch_add(1, Ordering::SeqCst) == 2 {
-                panic!("doom!");
-            }
-
             if let Some((fetched_at, value)) = inner.last_fetched.as_ref() {
                 if fetched_at.elapsed() < self.refresh_interval {
                     return Ok(value.clone());
@@ -143,6 +139,10 @@ where
 
                 tokio::spawn(async move {
                     let res = fut.await;
+
+                    if DOOM_COUNTER.fetch_add(1, Ordering::SeqCst) == 0 {
+                        panic!("doom!");
+                    }
 
                     {
                         // only sync code in this block
