@@ -3,10 +3,11 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use color_eyre::{eyre::eyre, Report};
+use parking_lot::Mutex;
 use std::future::Future;
 use std::pin::Pin;
 use std::{
-    sync::{Arc, Mutex},
+    sync::Arc,
     time::{Duration, Instant},
 };
 use tokio::sync::broadcast;
@@ -115,7 +116,7 @@ where
     {
         let mut rx = {
             // only sync code in this block
-            let mut inner = self.inner.lock().unwrap();
+            let mut inner = self.inner.lock();
 
             if DOOM_COUNTER.fetch_add(1, Ordering::SeqCst) == 2 {
                 panic!("doom!");
@@ -145,7 +146,7 @@ where
 
                     {
                         // only sync code in this block
-                        let mut inner = inner.lock().unwrap();
+                        let mut inner = inner.lock();
                         inner.inflight = None;
 
                         match res {

@@ -791,6 +791,7 @@ dependencies = [
  "feed-rs",
  "opentelemetry",
  "opentelemetry-jaeger",
+ "parking_lot",
  "reqwest",
  "serde",
  "tap",
